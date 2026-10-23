@@ -1,0 +1,40 @@
+--- a/Daboura_Kavra_BP/scripts/ai.js
++++ b/Daboura_Kavra_BP/scripts/ai.js
+@@
+-  // Phase 3.1 fix: when the NPC has already pressured a target with light techniques,
+-  // prefer a real melee cast deterministically instead of leaving it to weighted randomness.
+-  // checkCast still enforces energy, cooldown, recovery, and casting locks.
+-  if (!info.air && info.d <= 2.4 && openerCount === 0 && !info.hurtRecent && !checkCast(npc, 13, tgt)) return 13;
+-  if (!info.air && info.d <= 3.0 && info.hurtRecent && !checkCast(npc, 14, tgt)) return 14;
+-  if (!info.air && info.d >= 1.2 && info.d <= 5.5 && openerCount >= 1 && !checkCast(npc, 11, tgt)) return 11;
++  // Close-combat priority: don't require a prior ranged hit or recent damage to enter melee.
++  // The old gates could leave a close target in the weighted picker, where ranged skills
++  // remained eligible and repeatedly won. Respect normal cooldown/energy/guard checks.
++  if (!info.air && info.d >= 1.2 && info.d <= 5.5 && !checkCast(npc, 11, tgt)) return 11;
++  if (!info.air && info.d <= 3.2 && info.hurtRecent && !checkCast(npc, 14, tgt)) return 14;
++  if (!info.air && info.d <= 2.8 && !checkCast(npc, 13, tgt)) return 13;
+   if (!info.air && openerCount >= 2 && info.d >= 6 && info.d <= 24 && !checkCast(npc, 15, tgt) && thpF < 0.65) return 15;
+   if (!info.air && info.hurtRecent && info.d < 4 && !checkCast(npc, 12, tgt)) return 12;
++
++--- a/Daboura_Kavra_BP/scripts/main.js
+++++ b/Daboura_Kavra_BP/scripts/main.js
++@@
++-import { casts, tickCasts, tickEnergy, resetBlockBudget, savePlayer } from "./combat.js";
+++import { casts, tickCasts, tickEnergy, resetBlockBudget, savePlayer, cooldownLeft } from "./combat.js";
++@@
++ const isActor = (e) => isNpc(e) || (isPlayer(e) && inForm(e));
+++const checkMeleeCooldown = (p, id) => cooldownLeft(p, id) > 0;
++@@
++ // Native player melee hits are the direct combat input while embodied as Dabura.
++ // Trigger the short jab (or the heavier cross when the jab is cooling down) so a player
++ // does not have to open the technique menu for every close-range punch.
++ const meleeInputAt = new Map();
++ world.afterEvents.entityHitEntity.subscribe((ev) => {
++   const p = ev.damagingEntity;
++   if (!p || !isPlayer(p) || !inForm(p) || !valid(ev.hitEntity)) return;
++   const t = now(), last = meleeInputAt.get(p.id) || -1000;
++   if (t - last < 8 || casts.has(p.id)) return;
++   const id = !checkMeleeCooldown(p, 13) ? 13 : 14;
++   meleeInputAt.set(p.id, t);
++   playerCast(p, id);
++ });
